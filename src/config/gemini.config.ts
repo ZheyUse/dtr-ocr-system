@@ -1,5 +1,16 @@
-export const GEMINI_PRIMARY_MODEL = 'gemini-2.0-flash';
-export const GEMINI_FALLBACK_MODEL = 'gemini-1.5-flash';
+export type GeminiModelCandidate = {
+  model: string;
+  apiVersion: 'v1' | 'v1beta';
+};
+
+export const GEMINI_MODEL_CANDIDATES: GeminiModelCandidate[] = [
+  { model: 'gemini-3-flash', apiVersion: 'v1beta' },
+  { model: 'gemini-1.5-flash-latest', apiVersion: 'v1beta' },
+  { model: 'gemini-1.5-flash', apiVersion: 'v1beta' },
+  { model: 'gemini-2.5-flash', apiVersion: 'v1' },
+  { model: 'gemini-2.5-flash-lite', apiVersion: 'v1' },
+];
+
 export const GEMINI_MAX_OUTPUT_TOKENS = 4096;
 
 export const GEMINI_PROMPT_TEMPLATE = `You are an expert OCR assistant for Philippine government DTR (Daily Time Record) forms.

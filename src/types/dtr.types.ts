@@ -22,6 +22,19 @@ export interface DTRRecord {
   totalHoursRendered: number;
 }
 
+export interface ExtractionModelUsed {
+  fileName: string;
+  modelName: string;
+  apiVersion: string;
+  usedFallback: boolean;
+}
+
+export interface ExtractionSummary {
+  primaryModelLabel: string;
+  usedFallback: boolean;
+  perFile: ExtractionModelUsed[];
+}
+
 export interface GeneralStats {
   hoursRendered: number;
   hoursRequired: number;
@@ -34,4 +47,5 @@ export interface GeneralStats {
 export interface DTRProcessingResult {
   mergedRecord: DTRRecord;
   mergedFiles: number;
+  extractionSummary: ExtractionSummary;
 }

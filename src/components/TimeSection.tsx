@@ -2,8 +2,12 @@ import React from 'react';
 import { TimeEntry } from '../types/dtr.types';
 import { formatTimeOrDash } from '../utils/formatTime';
 
+type EditableEntryField = 'amIn' | 'amOut' | 'pmIn' | 'pmOut' | 'remarks';
+
 interface TimeSectionProps {
   entries: TimeEntry[];
+  isEditable?: boolean;
+  onEntryFieldChange?: (index: number, field: EditableEntryField, value: string) => void;
 }
 
 const todayIso = new Date().toISOString().slice(0, 10);
@@ -26,7 +30,11 @@ const getRowClass = (entry: TimeEntry): string => {
   return '';
 };
 
-export const TimeSection: React.FC<TimeSectionProps> = ({ entries }) => {
+export const TimeSection: React.FC<TimeSectionProps> = ({
+  entries,
+  isEditable = false,
+  onEntryFieldChange,
+}) => {
   return (
     <section className="card time-section">
       <h2>Daily Time Entries</h2>
@@ -45,16 +53,78 @@ export const TimeSection: React.FC<TimeSectionProps> = ({ entries }) => {
             </tr>
           </thead>
           <tbody>
-            {entries.map((entry) => (
+            {entries.map((entry, index) => (
               <tr key={`${entry.date}-${entry.dayOfWeek}`} className={getRowClass(entry)}>
                 <td>{entry.date}</td>
                 <td>{entry.dayOfWeek || '-'}</td>
-                <td>{formatTimeOrDash(entry.amIn)}</td>
-                <td>{formatTimeOrDash(entry.amOut)}</td>
-                <td>{formatTimeOrDash(entry.pmIn)}</td>
-                <td>{formatTimeOrDash(entry.pmOut)}</td>
+
+                <td>
+                  {isEditable && onEntryFieldChange ? (
+                    <input
+                      className="table-time-input"
+                      type="time"
+                      value={entry.amIn ?? ''}
+                      onChange={(event) => onEntryFieldChange(index, 'amIn', event.target.value)}
+                    />
+                  ) : (
+                    formatTimeOrDash(entry.amIn)
+                  )}
+                </td>
+
+                <td>
+                  {isEditable && onEntryFieldChange ? (
+                    <input
+                      className="table-time-input"
+                      type="time"
+                      value={entry.amOut ?? ''}
+                      onChange={(event) => onEntryFieldChange(index, 'amOut', event.target.value)}
+                    />
+                  ) : (
+                    formatTimeOrDash(entry.amOut)
+                  )}
+                </td>
+
+                <td>
+                  {isEditable && onEntryFieldChange ? (
+                    <input
+                      className="table-time-input"
+                      type="time"
+                      value={entry.pmIn ?? ''}
+                      onChange={(event) => onEntryFieldChange(index, 'pmIn', event.target.value)}
+                    />
+                  ) : (
+                    formatTimeOrDash(entry.pmIn)
+                  )}
+                </td>
+
+                <td>
+                  {isEditable && onEntryFieldChange ? (
+                    <input
+                      className="table-time-input"
+                      type="time"
+                      value={entry.pmOut ?? ''}
+                      onChange={(event) => onEntryFieldChange(index, 'pmOut', event.target.value)}
+                    />
+                  ) : (
+                    formatTimeOrDash(entry.pmOut)
+                  )}
+                </td>
+
                 <td>{entry.totalHours.toFixed(2)}</td>
-                <td>{entry.remarks || '-'}</td>
+
+                <td>
+                  {isEditable && onEntryFieldChange ? (
+                    <input
+                      className="table-remarks-input"
+                      type="text"
+                      value={entry.remarks ?? ''}
+                      placeholder="Remarks"
+                      onChange={(event) => onEntryFieldChange(index, 'remarks', event.target.value)}
+                    />
+                  ) : (
+                    entry.remarks || '-'
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

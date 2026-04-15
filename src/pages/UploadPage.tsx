@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { processDTRFiles } from '../controllers/dtrController';
-import { RATE_LIMIT_ERROR } from '../services/geminiService';
+import { RATE_LIMIT_ERROR, getLastExtractionDebug } from '../services/geminiService';
 import { useDTR } from '../hooks/useDTR';
 import { useCamera } from '../hooks/useCamera';
 import { useMultiUpload } from '../hooks/useMultiUpload';
@@ -30,6 +30,7 @@ export const UploadPage: React.FC = () => {
   const camera = useCamera();
 
   const [showRateLimitModal, setShowRateLimitModal] = useState(false);
+  const [lastDebug, setLastDebug] = useState<any>(null);
   const [processingState, setProcessingState] = useState<ProcessingState>({
     processedCount: 0,
     totalCount: 0,
@@ -70,10 +71,13 @@ export const UploadPage: React.FC = () => {
         },
       });
 
-      setRecord(result.mergedRecord, result.mergedFiles);
+      setRecord(result.mergedRecord, result.mergedFiles, result.extractionSummary);
       navigate('/dtr-result');
     } catch (processError) {
       if (processError instanceof Error && processError.message === RATE_LIMIT_ERROR) {
+        try {
+          setLastDebug(getLastExtractionDebug());
+        } catch {}
         setShowRateLimitModal(true);
         return;
       }
@@ -128,7 +132,11 @@ export const UploadPage: React.FC = () => {
         captureFrame={camera.captureFrame}
       />
 
-      <RateLimitModal isOpen={showRateLimitModal} onClose={() => setShowRateLimitModal(false)} />
+      <RateLimitModal
+        isOpen={showRateLimitModal}
+        onClose={() => setShowRateLimitModal(false)}
+        debug={lastDebug}
+      />
 
       <LoadingOverlay
         isVisible={loading}

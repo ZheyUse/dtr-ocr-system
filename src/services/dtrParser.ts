@@ -1,5 +1,11 @@
 import { DTRRecord, TimeEntry } from '../types/dtr.types';
-import { calculateRecordTotals, normalizeEntry } from './timeCalculator';
+import {
+  calculateRecordTotals,
+  collapseEntriesByDate,
+  deriveMonthPeriodFromEntries,
+  getDayOfWeekFromIsoDate,
+  normalizeEntry,
+} from './timeCalculator';
 
 const EMPTY_RECORD: DTRRecord = {
   employeeName: '',
@@ -38,25 +44,46 @@ const sanitizeTime = (value: unknown): string | null => {
   return `${hours}:${minutes}`;
 };
 
+const normalizeDate = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    utcDate.getUTCFullYear() !== year ||
+    utcDate.getUTCMonth() + 1 !== month ||
+    utcDate.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
 const sanitizeEntry = (entry: unknown): TimeEntry | null => {
   if (!entry || typeof entry !== 'object') {
     return null;
   }
 
   const source = entry as Record<string, unknown>;
-  const date = typeof source.date === 'string' ? source.date.trim() : '';
+  const date = normalizeDate(source.date);
 
   if (!date) {
     return null;
   }
 
-  const parsedDate = new Date(date);
-  const dayOfWeek =
-    typeof source.dayOfWeek === 'string' && source.dayOfWeek.trim()
-      ? source.dayOfWeek.trim()
-      : Number.isNaN(parsedDate.getTime())
-      ? ''
-      : new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(parsedDate);
+  const dayOfWeek = getDayOfWeekFromIsoDate(date);
 
   const numericTotalHours =
     typeof source.totalHours === 'number' && Number.isFinite(source.totalHours)
@@ -109,15 +136,16 @@ export const parseGeminiDTR = (rawText: string): DTRRecord => {
     ? parsed.entries.map(sanitizeEntry).filter((entry): entry is TimeEntry => Boolean(entry))
     : [];
 
-  const sortedEntries = entries.sort((a, b) => a.date.localeCompare(b.date));
+  const sortedEntries = collapseEntriesByDate(entries);
   const totals = calculateRecordTotals(sortedEntries);
+  const derivedMonthPeriod = deriveMonthPeriodFromEntries(sortedEntries);
 
   return {
     ...EMPTY_RECORD,
     employeeName: parsed.employeeName?.toString().trim() ?? '',
     position: parsed.position?.toString().trim() ?? '',
     department: parsed.department?.toString().trim() ?? '',
-    month: parsed.month?.toString().trim() ?? '',
+    month: derivedMonthPeriod || parsed.month?.toString().trim() || '',
     salaryGrade: parsed.salaryGrade?.toString().trim() ?? '',
     stepIncrement: parsed.stepIncrement?.toString().trim() ?? '',
     entries: sortedEntries,
