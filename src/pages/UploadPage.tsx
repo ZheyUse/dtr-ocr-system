@@ -10,12 +10,36 @@ import { CameraCapture } from '../components/CameraCapture';
 import { MultiFileQueue } from '../components/MultiFileQueue';
 import { LoadingOverlay } from '../components/LoadingOverlay';
 import { RateLimitModal } from '../components/RateLimitModal';
+import { ModeSelectModal } from '../components/ModeSelectModal';
+import { LocalOCRUnavailableModal } from '../components/LocalOCRUnavailableModal';
+import {
+  ALL_MODELS_FAILED_ERROR,
+  LOCAL_OCR_NOT_AVAILABLE_ERROR,
+  ProcessingMode,
+} from '../types/dtr.types';
 
 interface ProcessingState {
   processedCount: number;
   totalCount: number;
   currentFileName: string;
 }
+
+const MODE_STORAGE_KEY = 'dtr-processing-mode';
+
+const getStoredMode = (): ProcessingMode => {
+  const storedMode = window.localStorage.getItem(MODE_STORAGE_KEY);
+  if (storedMode === 'local' || storedMode === 'free' || storedMode === 'legacy') {
+    return storedMode;
+  }
+
+  return 'legacy';
+};
+
+const modeLabel: Record<ProcessingMode, string> = {
+  local: 'Local Mode',
+  free: 'Free Mode',
+  legacy: 'Legacy Mode',
+};
 
 const waitForUiFrame = (): Promise<void> => {
   return new Promise((resolve) => {
@@ -30,6 +54,9 @@ export const UploadPage: React.FC = () => {
   const camera = useCamera();
 
   const [showRateLimitModal, setShowRateLimitModal] = useState(false);
+  const [showModeSelectModal, setShowModeSelectModal] = useState(false);
+  const [showLocalUnavailableModal, setShowLocalUnavailableModal] = useState(false);
+  const [processingMode, setProcessingMode] = useState<ProcessingMode>(() => getStoredMode());
   const [lastDebug, setLastDebug] = useState<any>(null);
   const [processingState, setProcessingState] = useState<ProcessingState>({
     processedCount: 0,
@@ -38,6 +65,7 @@ export const UploadPage: React.FC = () => {
   });
 
   const canProcess = files.length > 0 && !loading;
+  const localEndpoint = process.env.REACT_APP_LOCAL_OCR_ENDPOINT || 'http://localhost:5000/ocr';
 
   const inlineError = useMemo(() => {
     return error || combinedError || null;
@@ -60,7 +88,7 @@ export const UploadPage: React.FC = () => {
     await waitForUiFrame();
 
     try {
-      const result = await processDTRFiles(files, {
+      const result = await processDTRFiles(files, processingMode, {
         minOverlayMs: 1400,
         onProgress: (processedCount, totalCount, currentFile) => {
           setProcessingState({
@@ -74,12 +102,29 @@ export const UploadPage: React.FC = () => {
       setRecord(result.mergedRecord, result.mergedFiles, result.extractionSummary);
       navigate('/dtr-result');
     } catch (processError) {
+      if (processError instanceof Error && processError.message === LOCAL_OCR_NOT_AVAILABLE_ERROR) {
+        setShowLocalUnavailableModal(true);
+        return;
+      }
+
       if (processError instanceof Error && processError.message === RATE_LIMIT_ERROR) {
         try {
           setLastDebug(getLastExtractionDebug());
         } catch {}
         setShowRateLimitModal(true);
         return;
+      }
+
+      if (processError instanceof Error && processError.message === ALL_MODELS_FAILED_ERROR) {
+        if (processingMode === 'free') {
+          setError('All OpenRouter models failed. Try Local Mode for better reliability or Legacy Mode for compatibility.');
+          return;
+        }
+
+        if (processingMode === 'local') {
+          setError('Local OCR pipeline failed to parse this file. Try Free Mode or Legacy Mode.');
+          return;
+        }
       }
 
       setError(
@@ -97,8 +142,15 @@ export const UploadPage: React.FC = () => {
       <main className="upload-page card">
         <header className="upload-header">
           <h1>DTR OCR System</h1>
-          <p>Upload your Daily Time Record images or PDF and extract data with Gemini OCR.</p>
+          <p>Upload DTR images or PDF and extract data using Local, Free, or Legacy processing mode.</p>
         </header>
+
+        <div className="mode-bar card">
+          <span className="mode-chip">{modeLabel[processingMode]}</span>
+          <button type="button" className="ghost-btn" onClick={() => setShowModeSelectModal(true)}>
+            Change Mode
+          </button>
+        </div>
 
         <UploadZone files={files} onSelectFiles={addFiles} />
 
@@ -136,6 +188,36 @@ export const UploadPage: React.FC = () => {
         isOpen={showRateLimitModal}
         onClose={() => setShowRateLimitModal(false)}
         debug={lastDebug}
+      />
+
+      <ModeSelectModal
+        isOpen={showModeSelectModal}
+        selectedMode={processingMode}
+        onSelectMode={(mode) => {
+          setProcessingMode(mode);
+          window.localStorage.setItem(MODE_STORAGE_KEY, mode);
+        }}
+        onClose={() => setShowModeSelectModal(false)}
+      />
+
+      <LocalOCRUnavailableModal
+        isOpen={showLocalUnavailableModal}
+        endpoint={localEndpoint}
+        onRetry={() => {
+          setShowLocalUnavailableModal(false);
+          void handleProcessDTR();
+        }}
+        onSwitchToFree={() => {
+          setProcessingMode('free');
+          window.localStorage.setItem(MODE_STORAGE_KEY, 'free');
+          setShowLocalUnavailableModal(false);
+        }}
+        onSwitchToLegacy={() => {
+          setProcessingMode('legacy');
+          window.localStorage.setItem(MODE_STORAGE_KEY, 'legacy');
+          setShowLocalUnavailableModal(false);
+        }}
+        onClose={() => setShowLocalUnavailableModal(false)}
       />
 
       <LoadingOverlay

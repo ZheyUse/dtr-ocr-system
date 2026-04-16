@@ -4,9 +4,12 @@ export type GeminiModelCandidate = {
 };
 
 export const GEMINI_MODEL_CANDIDATES: GeminiModelCandidate[] = [
-  { model: 'gemini-3-flash', apiVersion: 'v1beta' },
-  { model: 'gemini-1.5-flash-latest', apiVersion: 'v1beta' },
-  { model: 'gemini-1.5-flash', apiVersion: 'v1beta' },
+  // Prefer v1beta preview/latest flash models when available for better OCR quality
+  { model: 'gemini-flash-latest', apiVersion: 'v1beta' },
+  { model: 'gemini-flash-lite-latest', apiVersion: 'v1beta' },
+  { model: 'gemini-3-flash-preview', apiVersion: 'v1beta' },
+  { model: 'gemini-3-pro-preview', apiVersion: 'v1beta' },
+  // Fall back to stable v1 models
   { model: 'gemini-2.5-flash', apiVersion: 'v1' },
   { model: 'gemini-2.5-flash-lite', apiVersion: 'v1' },
 ];

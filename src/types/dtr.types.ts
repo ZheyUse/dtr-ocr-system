@@ -10,6 +10,8 @@ export interface TimeEntry {
   remarks: string;
 }
 
+export type ProcessingMode = 'local' | 'free' | 'legacy';
+
 export interface DTRRecord {
   employeeName: string;
   position: string;
@@ -27,9 +29,11 @@ export interface ExtractionModelUsed {
   modelName: string;
   apiVersion: string;
   usedFallback: boolean;
+  provider?: 'gemini' | 'openrouter' | 'local-ocr';
 }
 
 export interface ExtractionSummary {
+  mode: ProcessingMode;
   primaryModelLabel: string;
   usedFallback: boolean;
   perFile: ExtractionModelUsed[];
@@ -49,3 +53,6 @@ export interface DTRProcessingResult {
   mergedFiles: number;
   extractionSummary: ExtractionSummary;
 }
+
+export const LOCAL_OCR_NOT_AVAILABLE_ERROR = 'LOCAL_OCR_NOT_AVAILABLE';
+export const ALL_MODELS_FAILED_ERROR = 'ALL_MODELS_FAILED';

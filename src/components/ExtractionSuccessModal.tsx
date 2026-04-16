@@ -16,13 +16,20 @@ export const ExtractionSuccessModal: React.FC<ExtractionSuccessModalProps> = ({
     return null;
   }
 
+  const modeTitle =
+    summary.mode === 'local'
+      ? 'Successfully Extracted Using Local OCR + Qwen3'
+      : summary.mode === 'free'
+      ? 'Successfully Extracted Using OpenRouter'
+      : 'Successfully Extracted Using Gemini';
+
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Extraction success details">
       <div className="extraction-success-modal card">
         <div className="success-icon" aria-hidden="true">
           ✓
         </div>
-        <h3>Successfully Extracted Using Gemini</h3>
+        <h3>{modeTitle}</h3>
         <p className="success-model-label">
           <strong>Model Used:</strong> {summary.primaryModelLabel}
         </p>

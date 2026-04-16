@@ -18,6 +18,24 @@ const normalizeTimeInput = (value: string): string | null => {
   return trimmed ? trimmed : null;
 };
 
+const modeMeta = {
+  local: {
+    badge: 'Local Mode',
+    className: 'mode-badge local',
+    tooltip: 'Processed via local OCR + Qwen3 reasoning through OpenRouter.',
+  },
+  free: {
+    badge: 'Free Mode',
+    className: 'mode-badge free',
+    tooltip: 'Processed via OpenRouter AI fallback chain.',
+  },
+  legacy: {
+    badge: 'Legacy Mode',
+    className: 'mode-badge legacy',
+    tooltip: 'Processed via Gemini API compatibility flow.',
+  },
+} as const;
+
 export const DTRResultPage: React.FC = () => {
   const navigate = useNavigate();
   const { record, mergedFileCount, extractionSummary } = useDTR();
@@ -107,6 +125,11 @@ export const DTRResultPage: React.FC = () => {
         </div>
 
         <div className="result-header-actions">
+          {extractionSummary && (
+            <span className={modeMeta[extractionSummary.mode].className} title={modeMeta[extractionSummary.mode].tooltip}>
+              {modeMeta[extractionSummary.mode].badge}
+            </span>
+          )}
           {mergedFileCount > 1 && <span className="merge-badge">{mergedFileCount} files merged</span>}
           <button type="button" className="primary-btn" onClick={() => setShowExportModal(true)}>
             Export Report
