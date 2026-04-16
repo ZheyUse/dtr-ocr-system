@@ -2,6 +2,7 @@ import {
   ALL_MODELS_FAILED_ERROR,
   DTRProcessingResult,
   LOCAL_OCR_NOT_AVAILABLE_ERROR,
+  OPENROUTER_RATE_LIMIT_ERROR,
   ProcessingMode,
 } from '../types/dtr.types';
 import {
@@ -133,6 +134,7 @@ export const processDTRFiles = async (
     if (
       error instanceof Error &&
       (error.message === RATE_LIMIT_ERROR ||
+        error.message === OPENROUTER_RATE_LIMIT_ERROR ||
         error.message === LOCAL_OCR_NOT_AVAILABLE_ERROR ||
         error.message === ALL_MODELS_FAILED_ERROR)
     ) {

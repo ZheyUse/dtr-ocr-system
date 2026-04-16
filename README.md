@@ -62,6 +62,10 @@ py -3.12 -m venv .venv-local
 
 # 2) start the OCR server (keep this terminal open while using Local Mode)
 $env:PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK='True'
+$env:LOCAL_OCR_PORT='5000'
+# Optional overrides:
+# $env:LOCAL_OCR_FORCE_GPU='True'   # force GPU attempt
+# $env:LOCAL_OCR_FORCE_CPU='True'   # force CPU fallback
 .\.venv-local\Scripts\python.exe .\ocr_server.py
 
 # In a second terminal: start the frontend
@@ -77,7 +81,7 @@ python3.12 -m venv .venv-local
 ./.venv-local/bin/python -m pip install -r requirements-local-ocr.txt
 
 # 2) start the OCR server (keep this terminal open while using Local Mode)
-PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True ./.venv-local/bin/python ./ocr_server.py
+LOCAL_OCR_PORT=5000 PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True ./.venv-local/bin/python ./ocr_server.py
 
 # In a second terminal: start the frontend
 npm start
@@ -87,6 +91,9 @@ Notes and tips:
 - Make sure your `.env` contains `REACT_APP_LOCAL_OCR_ENDPOINT=http://localhost:5000/ocr` (or the URL you set) so the frontend knows where to POST images for OCR.
 - If you used `npm run setup:local` the script creates the `.venv-local` and installs OCR deps for you; `npm run setup:local:start` will also start the server on Windows.
 - The first OCR server startup can take several minutes as Paddle downloads models — keep that terminal open while testing Local Mode.
+- The OCR server now auto-detects GPU and uses it when supported by your installed Paddle build.
+- If your machine has a GPU but health shows `"gpu_compiled": false`, you likely installed a CPU-only `paddlepaddle` wheel and need a CUDA-enabled Paddle package.
+- If port `5000` is already in use, set `LOCAL_OCR_PORT` (example: `5001`) when starting OCR and set `.env` `REACT_APP_LOCAL_OCR_ENDPOINT` to match (example: `http://localhost:5001/ocr`).
 - Use `Free Mode` from the app if you prefer not to run the local OCR server; that mode uses OpenRouter (requires `REACT_APP_OPENROUTER_API_KEY`).
 
 ### 4. Start frontend
@@ -114,6 +121,10 @@ py -3.12 -m venv .venv-local
 .\.venv-local\Scripts\python.exe -m pip install --upgrade pip
 .\.venv-local\Scripts\python.exe -m pip install -r requirements-local-ocr.txt
 $env:PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK='True'
+$env:LOCAL_OCR_PORT='5000'
+# Optional overrides:
+# $env:LOCAL_OCR_FORCE_GPU='True'
+# $env:LOCAL_OCR_FORCE_CPU='True'
 .\.venv-local\Scripts\python.exe .\ocr_server.py
 ```
 
@@ -123,7 +134,7 @@ $env:PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK='True'
 python3.12 -m venv .venv-local
 ./.venv-local/bin/python -m pip install --upgrade pip
 ./.venv-local/bin/python -m pip install -r requirements-local-ocr.txt
-PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True ./.venv-local/bin/python ./ocr_server.py
+LOCAL_OCR_PORT=5000 PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True ./.venv-local/bin/python ./ocr_server.py
 ```
 
 Health check (optional):
@@ -135,12 +146,13 @@ curl http://127.0.0.1:5000/health
 Expected response:
 
 ```json
-{"status":"ok","ocr":"paddleocr-ready"}
+{"status":"ok","ocr":"paddleocr-ready","runtime":{"use_gpu":false,"gpu_compiled":false,"gpu_count":0,"cpu_threads":8,"fast_mode":true}}
 ```
 
 Notes:
 - First Local OCR startup can take a while because Paddle downloads model files.
 - Keep the OCR terminal running while using Local Mode.
+- Check `runtime.use_gpu` from `/health` to confirm whether OCR is running on GPU.
 - Virtual environments are ignored by git (`.venv-local`, `.venv`, `venv`).
 
 ## Processing Modes

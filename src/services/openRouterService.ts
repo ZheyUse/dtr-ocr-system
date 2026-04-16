@@ -1,4 +1,9 @@
-import { DTRRecord, ALL_MODELS_FAILED_ERROR, OPENROUTER_CONNECTIVITY_ERROR } from '../types/dtr.types';
+import {
+  DTRRecord,
+  ALL_MODELS_FAILED_ERROR,
+  OPENROUTER_CONNECTIVITY_ERROR,
+  OPENROUTER_RATE_LIMIT_ERROR,
+} from '../types/dtr.types';
 import {
   OPENROUTER_BASE_URL,
   OPENROUTER_REASONING_CANDIDATES,
@@ -6,7 +11,6 @@ import {
 } from '../config/openrouter.config';
 import { DTR_QWEN3_PROMPT } from '../config/dtrQwen3Prompt';
 import { parseGeminiDTR } from './dtrParser';
-import { RATE_LIMIT_ERROR } from './geminiService';
 
 type OpenRouterMessage = {
   role: 'system' | 'user' | 'assistant';
@@ -266,7 +270,7 @@ export const extractDTRFromOpenRouterVision = async (
   }
 
   if (seenRateLimit) {
-    throw new Error(RATE_LIMIT_ERROR);
+    throw new Error(OPENROUTER_RATE_LIMIT_ERROR);
   }
 
   throw new Error(ALL_MODELS_FAILED_ERROR);
@@ -311,7 +315,7 @@ export const extractDTRFromOCRTextViaOpenRouter = async (
   }
 
   if (seenRateLimit) {
-    throw new Error(RATE_LIMIT_ERROR);
+    throw new Error(OPENROUTER_RATE_LIMIT_ERROR);
   }
 
   throw new Error(ALL_MODELS_FAILED_ERROR);

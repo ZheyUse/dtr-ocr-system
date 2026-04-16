@@ -54,15 +54,29 @@ export const extractLocalOCRText = async (file: File): Promise<string> => {
   const base64 = await fileToBase64(file);
   const endpoint = getLocalOCREndpoint();
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ image: base64 }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ image: base64 }),
+    });
+  } catch (error) {
+    console.error('[localOCRService] Network failure calling local OCR endpoint', {
+      endpoint,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 
   if (!response.ok) {
+    console.error('[localOCRService] Local OCR HTTP failure', {
+      endpoint,
+      status: response.status,
+      statusText: response.statusText,
+    });
     throw new Error(`LOCAL_OCR_HTTP_${response.status}`);
   }
 
@@ -73,6 +87,10 @@ export const extractLocalOCRText = async (file: File): Promise<string> => {
   };
 
   if (!payload.success) {
+    console.error('[localOCRService] Local OCR returned failure payload', {
+      endpoint,
+      error: payload.error || 'LOCAL_OCR_FAILED',
+    });
     throw new Error(payload.error || 'LOCAL_OCR_FAILED');
   }
 

@@ -16,6 +16,7 @@ import {
   ALL_MODELS_FAILED_ERROR,
   LOCAL_OCR_NOT_AVAILABLE_ERROR,
   OPENROUTER_CONNECTIVITY_ERROR,
+  OPENROUTER_RATE_LIMIT_ERROR,
   ProcessingMode,
 } from '../types/dtr.types';
 
@@ -33,13 +34,13 @@ const getStoredMode = (): ProcessingMode => {
     return storedMode;
   }
 
-  return 'legacy';
+  return 'local';
 };
 
 const modeLabel: Record<ProcessingMode, string> = {
-  local: 'Local Mode',
-  free: 'Free Mode',
-  legacy: 'Legacy Mode',
+  local: 'Local Mode (PaddleOCR + OpenRouter)',
+  free: 'Free Mode (OpenRouter)',
+  legacy: 'Legacy Mode (Gemini)',
 };
 
 const waitForUiFrame = (): Promise<void> => {
@@ -114,6 +115,18 @@ export const UploadPage: React.FC = () => {
         } catch {}
         setShowRateLimitModal(true);
         return;
+      }
+
+      if (processError instanceof Error && processError.message === OPENROUTER_RATE_LIMIT_ERROR) {
+        if (processingMode === 'local') {
+          setError('Local OCR ran successfully, but OpenRouter free models are rate-limited right now. Please retry in a bit or switch mode.');
+          return;
+        }
+
+        if (processingMode === 'free') {
+          setError('OpenRouter free models are rate-limited right now. Please retry in a bit or use Local/Legacy mode.');
+          return;
+        }
       }
 
       if (
