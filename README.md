@@ -6,15 +6,22 @@ A React + TypeScript web app for extracting Daily Time Record data from uploaded
 - Free Mode: OpenRouter-only fallback chain
 - Legacy Mode: Gemini API compatibility flow
 
-## Setup
+## Quick Start (Fork/Clone)
 
-1. Install dependencies:
+### 1. Prerequisites
+
+- Node.js 18+ and npm
+- Python 3.12 (recommended for Local Mode)
+
+### 2. Clone and install Node dependencies
 
 ```bash
+git clone <your-fork-or-repo-url>
+cd dtr-ocr-system
 npm install
 ```
 
-2. Create `.env` in the project root:
+### 3. Create .env in project root
 
 ```env
 REACT_APP_GEMINI_API_KEY=your_api_key_here
@@ -22,17 +29,77 @@ REACT_APP_OPENROUTER_API_KEY=your_openrouter_key_here
 REACT_APP_LOCAL_OCR_ENDPOINT=http://localhost:5000/ocr
 ```
 
-3. Install and run Local OCR server (optional, required for Local Mode):
+Notes:
+- Local Mode needs `REACT_APP_LOCAL_OCR_ENDPOINT` to point to your running local OCR server.
+- Free Mode uses OpenRouter key.
+- Legacy Mode uses Gemini key.
 
-```bash
-pip install -r requirements-local-ocr.txt
-python ocr_server.py
-```
-
-4. Start development server:
+### 4. Start frontend
 
 ```bash
 npm start
+```
+
+App runs at `http://localhost:3000` by default.
+
+## Local OCR Setup (Optional, required for Local Mode)
+
+Run these commands in `dtr-ocr-system`:
+
+### Windows PowerShell (recommended)
+
+```powershell
+py -3.12 -m venv .venv-local
+.\.venv-local\Scripts\python.exe -m pip install --upgrade pip
+.\.venv-local\Scripts\python.exe -m pip install -r requirements-local-ocr.txt
+$env:PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK='True'
+.\.venv-local\Scripts\python.exe .\ocr_server.py
+```
+
+### macOS/Linux
+
+```bash
+python3.12 -m venv .venv-local
+./.venv-local/bin/python -m pip install --upgrade pip
+./.venv-local/bin/python -m pip install -r requirements-local-ocr.txt
+PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True ./.venv-local/bin/python ./ocr_server.py
+```
+
+Health check (optional):
+
+```bash
+curl http://127.0.0.1:5000/health
+```
+
+Expected response:
+
+```json
+{"status":"ok","ocr":"paddleocr-ready"}
+```
+
+Notes:
+- First Local OCR startup can take a while because Paddle downloads model files.
+- Keep the OCR terminal running while using Local Mode.
+- Virtual environments are ignored by git (`.venv-local`, `.venv`, `venv`).
+
+## Processing Modes
+
+- Local: Local PaddleOCR extracts text, then Qwen3/OpenRouter structures DTR JSON.
+- Free: OpenRouter-only fallback chain.
+- Legacy: Gemini compatibility flow.
+
+If Local OCR is not running, use Free or Legacy mode.
+
+## Build
+
+```bash
+npm run build
+```
+
+## Testing
+
+```bash
+npm test -- --watchAll=false
 ```
 
 ## Main Features
@@ -50,15 +117,3 @@ npm start
 - Local OCR unavailable modal with setup steps
 - Rate-limit modal handling (`RATE_LIMIT_HIT`)
 - Loading overlay with uploaded-image preview and scan animation
-
-## Build
-
-```bash
-npm run build
-```
-
-## Testing
-
-```bash
-npm test -- --watchAll=false
-```

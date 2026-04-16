@@ -23,3 +23,8 @@ yarn-debug.log*
 yarn-error.log*
 
 .env
+/venv
+/.venv
+.venv
+/.venv-local
+.venv-local
