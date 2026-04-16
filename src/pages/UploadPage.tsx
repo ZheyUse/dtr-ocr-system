@@ -12,6 +12,7 @@ import { LoadingOverlay } from '../components/LoadingOverlay';
 import { RateLimitModal } from '../components/RateLimitModal';
 import { ModeSelectModal } from '../components/ModeSelectModal';
 import { LocalOCRUnavailableModal } from '../components/LocalOCRUnavailableModal';
+import { OCRJsonPreviewItem, OCRJsonPreviewModal } from '../components/OCRJsonPreviewModal';
 import {
   ALL_MODELS_FAILED_ERROR,
   LOCAL_OCR_NOT_AVAILABLE_ERROR,
@@ -38,7 +39,7 @@ const getStoredMode = (): ProcessingMode => {
 };
 
 const modeLabel: Record<ProcessingMode, string> = {
-  local: 'Local Mode (PaddleOCR + OpenRouter)',
+  local: 'Local Mode (PaddleOCR + Local Parser/OpenRouter)',
   free: 'Free Mode (OpenRouter)',
   legacy: 'Legacy Mode (Gemini)',
 };
@@ -58,6 +59,8 @@ export const UploadPage: React.FC = () => {
   const [showRateLimitModal, setShowRateLimitModal] = useState(false);
   const [showModeSelectModal, setShowModeSelectModal] = useState(false);
   const [showLocalUnavailableModal, setShowLocalUnavailableModal] = useState(false);
+  const [showOCRJsonModal, setShowOCRJsonModal] = useState(false);
+  const [ocrJsonPreviewItems, setOCRJsonPreviewItems] = useState<OCRJsonPreviewItem[]>([]);
   const [processingMode, setProcessingMode] = useState<ProcessingMode>(() => getStoredMode());
   const [lastDebug, setLastDebug] = useState<any>(null);
   const [processingState, setProcessingState] = useState<ProcessingState>({
@@ -67,6 +70,8 @@ export const UploadPage: React.FC = () => {
   });
 
   const canProcess = files.length > 0 && !loading;
+  const hasCachedOCRPreview = ocrJsonPreviewItems.length > 0;
+  const canPreviewOCRJson = processingMode === 'local' && hasCachedOCRPreview && !loading;
   const localEndpoint = process.env.REACT_APP_LOCAL_OCR_ENDPOINT || 'http://localhost:5000/ocr';
 
   const inlineError = useMemo(() => {
@@ -80,6 +85,8 @@ export const UploadPage: React.FC = () => {
 
     clearErrors();
     setError(null);
+    setShowOCRJsonModal(false);
+    setOCRJsonPreviewItems([]);
     setLoading(true);
     setProcessingState({
       processedCount: 0,
@@ -97,6 +104,21 @@ export const UploadPage: React.FC = () => {
             processedCount,
             totalCount,
             currentFileName: currentFile.name,
+          });
+        },
+        onLocalOCRReady: (currentFile, payload) => {
+          const fileKey = `${currentFile.name}::${currentFile.size}::${currentFile.lastModified}`;
+          setOCRJsonPreviewItems((previous) => {
+            const next = previous.filter((item) => item.fileKey !== fileKey);
+            next.push({
+              fileKey,
+              fileName: currentFile.name,
+              text: payload.text,
+              ocrJson: payload.ocrJson,
+              structuredDtr: payload.structuredDtr,
+              structuredMeta: payload.structuredMeta,
+            });
+            return next;
           });
         },
       });
@@ -119,7 +141,7 @@ export const UploadPage: React.FC = () => {
 
       if (processError instanceof Error && processError.message === OPENROUTER_RATE_LIMIT_ERROR) {
         if (processingMode === 'local') {
-          setError('Local OCR ran successfully, but OpenRouter free models are rate-limited right now. Please retry in a bit or switch mode.');
+          setError('Local OCR ran successfully, but OpenRouter free models are rate-limited right now. Please retry in a bit, switch mode, or use Preview OCR JSON to inspect cached Paddle output from this run.');
           return;
         }
 
@@ -166,6 +188,13 @@ export const UploadPage: React.FC = () => {
     }
   };
 
+  const handlePreviewOCRJson = (): void => {
+    if (!canPreviewOCRJson) {
+      return;
+    }
+    setShowOCRJsonModal(true);
+  };
+
   return (
     <div className="app-shell">
       <main className="upload-page card">
@@ -187,6 +216,17 @@ export const UploadPage: React.FC = () => {
           <button type="button" className="ghost-btn" onClick={() => void camera.openCamera()}>
             Use Camera
           </button>
+
+          {processingMode === 'local' && (
+            <button
+              type="button"
+              className="ghost-btn"
+              disabled={!canPreviewOCRJson}
+              onClick={handlePreviewOCRJson}
+            >
+              Preview OCR JSON
+            </button>
+          )}
 
           <button
             type="button"
@@ -227,6 +267,12 @@ export const UploadPage: React.FC = () => {
           window.localStorage.setItem(MODE_STORAGE_KEY, mode);
         }}
         onClose={() => setShowModeSelectModal(false)}
+      />
+
+      <OCRJsonPreviewModal
+        isOpen={showOCRJsonModal}
+        items={ocrJsonPreviewItems}
+        onClose={() => setShowOCRJsonModal(false)}
       />
 
       <LocalOCRUnavailableModal

@@ -2,6 +2,7 @@ import { GoogleGenAI, createPartFromBase64 } from '@google/genai';
 import {
   GEMINI_MODEL_CANDIDATES,
   GEMINI_MAX_OUTPUT_TOKENS,
+  GEMINI_OCR_TEXT_PROMPT_TEMPLATE,
   GEMINI_PROMPT_TEMPLATE,
   GeminiModelCandidate,
 } from '../config/gemini.config';
@@ -168,6 +169,25 @@ const safeSerializeError = (error: unknown) => {
   }
 };
 
+const truncateForPrompt = (value: string, maxChars: number): string => {
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  return `${value.slice(0, maxChars)}\n\n[truncated]`;
+};
+
+const buildGeminiOCRTextPrompt = (ocrText: string, ocrJson?: unknown): string => {
+  const compactJson = ocrJson ? truncateForPrompt(JSON.stringify(ocrJson), 18000) : '';
+  const compactText = truncateForPrompt(ocrText, 12000);
+
+  if (compactJson) {
+    return `${GEMINI_OCR_TEXT_PROMPT_TEMPLATE}\n\nOCR CANONICAL JSON:\n${compactJson}\n\nOCR RAW TEXT:\n${compactText}`;
+  }
+
+  return `${GEMINI_OCR_TEXT_PROMPT_TEMPLATE}\n\nOCR RAW TEXT:\n${compactText}`;
+};
+
 const getClient = (apiVersion: GeminiModelCandidate['apiVersion']): GoogleGenAI => {
   const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
   if (!apiKey) {
@@ -245,6 +265,49 @@ const runModelExtraction = async (
       apiVersion,
       fileName: file.name,
       error: serialized,
+    });
+    throw err;
+  }
+};
+
+const runModelExtractionFromText = async (
+  ai: GoogleGenAI,
+  apiVersion: GeminiModelCandidate['apiVersion'],
+  modelName: string,
+  prompt: string
+): Promise<DTRRecord> => {
+  try {
+    console.debug('[geminiService] calling text model', {
+      modelName,
+      apiVersion,
+      promptLength: prompt.length,
+    });
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: [prompt],
+      config: {
+        temperature: 0,
+        maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+      },
+    });
+
+    const textOutput = response.text?.trim();
+    if (!textOutput) {
+      console.error('[geminiService] Empty text output from text-based extraction', {
+        modelName,
+        apiVersion,
+        response: safeSerializeError(response),
+      });
+      throw new Error('INVALID_RESPONSE');
+    }
+
+    return parseGeminiDTR(textOutput);
+  } catch (err) {
+    console.error('[geminiService] text generateContent failed', {
+      modelName,
+      apiVersion,
+      error: safeSerializeError(err),
     });
     throw err;
   }
@@ -356,6 +419,99 @@ export const extractDTRFromFile = async (file: File): Promise<DTRRecord> => {
 
     throw new Error('Failed to process DTR image.');
   }
+};
+
+export const extractDTRFromOCRTextViaGemini = async (
+  ocrText: string,
+  ocrJson?: unknown
+): Promise<{ record: DTRRecord; model: string; usedFallback: boolean }> => {
+  const prompt = buildGeminiOCRTextPrompt(ocrText, ocrJson);
+  const modelCandidates = Array.from(
+    new Map(
+      GEMINI_MODEL_CANDIDATES.map((candidate) => [`${candidate.apiVersion}:${candidate.model}`, candidate])
+    ).values()
+  );
+
+  let lastError: unknown;
+  let seenRateLimit = false;
+  let seenModelNotFound = false;
+
+  try {
+    lastExtractionDebug = { attempts: [], fileName: 'local-ocr-text-fallback', timestamp: Date.now() };
+  } catch {}
+
+  for (let index = 0; index < modelCandidates.length; index += 1) {
+    const candidate = modelCandidates[index];
+    const ai = getClient(candidate.apiVersion);
+
+    try {
+      const record = await runModelExtractionFromText(ai, candidate.apiVersion, candidate.model, prompt);
+
+      try {
+        if (!lastExtractionDebug) {
+          lastExtractionDebug = { attempts: [], fileName: 'local-ocr-text-fallback', timestamp: Date.now() };
+        }
+        lastExtractionDebug.attempts.push({
+          modelName: candidate.model,
+          apiVersion: candidate.apiVersion,
+          status: 200,
+          isRateLimit: false,
+          isModelNotFound: false,
+          serializedError: { success: true },
+        });
+      } catch {}
+
+      return {
+        record,
+        model: candidate.model,
+        usedFallback: index > 0,
+      };
+    } catch (attemptError) {
+      lastError = attemptError;
+      const attemptRateLimit = isRateLimitError(attemptError);
+      const attemptModelNotFound = isModelNotFoundError(attemptError);
+      seenRateLimit = seenRateLimit || attemptRateLimit;
+      seenModelNotFound = seenModelNotFound || attemptModelNotFound;
+
+      try {
+        if (!lastExtractionDebug) {
+          lastExtractionDebug = { attempts: [], fileName: 'local-ocr-text-fallback', timestamp: Date.now() };
+        }
+        lastExtractionDebug.attempts.push({
+          modelName: candidate.model,
+          apiVersion: candidate.apiVersion,
+          status: extractStatusCode(attemptError),
+          isRateLimit: attemptRateLimit,
+          isModelNotFound: attemptModelNotFound,
+          serializedError: safeSerializeError(attemptError),
+        });
+      } catch {}
+    }
+  }
+
+  try {
+    if (!lastExtractionDebug) {
+      lastExtractionDebug = { attempts: [], fileName: 'local-ocr-text-fallback', timestamp: Date.now() };
+    }
+    lastExtractionDebug.finalError = lastError;
+    lastExtractionDebug.timestamp = Date.now();
+  } catch {}
+
+  if (seenRateLimit || isRateLimitError(lastError)) {
+    throw new Error(RATE_LIMIT_ERROR);
+  }
+
+  if (seenModelNotFound || isModelNotFoundError(lastError)) {
+    throw new Error(
+      'No configured Gemini model is available for your current key/region. Check model access and try v1beta-compatible Flash models.'
+    );
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+
+  throw new Error('Failed to process OCR text with Gemini fallback.');
 };
 
 export { RATE_LIMIT_ERROR, MODEL_NOT_AVAILABLE_ERROR };

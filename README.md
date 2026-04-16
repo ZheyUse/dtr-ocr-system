@@ -41,6 +41,10 @@ npm run setup:local:start
 REACT_APP_GEMINI_API_KEY=your_api_key_here
 REACT_APP_OPENROUTER_API_KEY=your_openrouter_key_here
 REACT_APP_LOCAL_OCR_ENDPOINT=http://localhost:5000/ocr
+# Optional OpenRouter retry tuning (defaults shown)
+REACT_APP_OPENROUTER_MAX_RETRIES=2
+REACT_APP_OPENROUTER_RETRY_BASE_MS=800
+REACT_APP_OPENROUTER_RETRY_MAX_MS=8000
 ```
 
 Notes:
@@ -160,6 +164,13 @@ Notes:
 - Local: Local PaddleOCR extracts text, then Qwen3/OpenRouter structures DTR JSON.
 - Free: OpenRouter-only fallback chain.
 - Legacy: Gemini compatibility flow.
+
+Local Mode now uses a parser-first flow:
+- PaddleOCR produces canonical OCR JSON (lines + confidence + boxes).
+- A local heuristic parser attempts to produce DTR JSON directly.
+- OpenRouter is used when local parser confidence is low or rows are incomplete.
+- If OpenRouter fails/rate-limits, Local mode falls back to Gemini using OCR JSON/text (no image upload needed for this fallback).
+- If OpenRouter is rate-limited, run `Process DTR` first, then use `Preview OCR JSON` to inspect cached Paddle output from that attempt (no second OCR pass).
 
 If Local OCR is not running, use Free or Legacy mode.
 

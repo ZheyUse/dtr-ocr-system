@@ -42,6 +42,19 @@ const OPENROUTER_CHAT_URL = normalizeOpenRouterChatUrl(
 );
 const OPENROUTER_MODELS_URL = OPENROUTER_CHAT_URL.replace(/\/chat\/completions$/, '/models');
 
+const toPositiveInt = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return Math.floor(parsed);
+};
+
+const OPENROUTER_MAX_RETRIES = toPositiveInt(process.env.REACT_APP_OPENROUTER_MAX_RETRIES, 2);
+const OPENROUTER_RETRY_BASE_MS = toPositiveInt(process.env.REACT_APP_OPENROUTER_RETRY_BASE_MS, 800);
+const OPENROUTER_RETRY_MAX_MS = toPositiveInt(process.env.REACT_APP_OPENROUTER_RETRY_MAX_MS, 8000);
+
 let connectivityPromise: Promise<void> | null = null;
 
 const getApiKey = (): string => {
@@ -177,6 +190,57 @@ const isVisionUnsupported = (message: string): boolean => {
   return /image|vision|multimodal|unsupported|does not support images/i.test(message);
 };
 
+const isRetriableStatus = (status?: number): boolean => {
+  if (status === undefined) {
+    return false;
+  }
+
+  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+};
+
+const parseRetryAfterMs = (retryAfter: string | null): number | null => {
+  if (!retryAfter) {
+    return null;
+  }
+
+  const asSeconds = Number(retryAfter);
+  if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+    return Math.floor(asSeconds * 1000);
+  }
+
+  const asDate = Date.parse(retryAfter);
+  if (!Number.isNaN(asDate)) {
+    const msUntilDate = asDate - Date.now();
+    return msUntilDate > 0 ? msUntilDate : 0;
+  }
+
+  return null;
+};
+
+const sleep = (ms: number): Promise<void> => {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+};
+
+const getRetryDelayMs = (attempt: number, retryAfterMs?: number | null): number => {
+  if (typeof retryAfterMs === 'number' && retryAfterMs >= 0) {
+    return Math.min(retryAfterMs, OPENROUTER_RETRY_MAX_MS);
+  }
+
+  const exponential = Math.min(OPENROUTER_RETRY_BASE_MS * Math.pow(2, attempt), OPENROUTER_RETRY_MAX_MS);
+  const jitter = Math.floor(Math.random() * 350);
+  return Math.min(exponential + jitter, OPENROUTER_RETRY_MAX_MS);
+};
+
+const truncateForPrompt = (value: string, maxChars: number): string => {
+  if (value.length <= maxChars) {
+    return value;
+  }
+
+  return `${value.slice(0, maxChars)}\n\n[truncated]`;
+};
+
 const callOpenRouter = async (
   model: string,
   messages: OpenRouterMessage[],
@@ -185,41 +249,78 @@ const callOpenRouter = async (
   await ensureOpenRouterConnectivity();
   const apiKey = getApiKey();
 
-  const response = await fetch(OPENROUTER_CHAT_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature: 0,
-      max_tokens: maxTokens,
-    }),
-  });
+  for (let attempt = 0; attempt <= OPENROUTER_MAX_RETRIES; attempt += 1) {
+    let response: Response;
 
-  const rawBody = await response.text();
-  const parsedBody = parseJsonRecord(rawBody);
-  const payload = parsedBody || { raw: rawBody };
+    try {
+      response = await fetch(OPENROUTER_CHAT_URL, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages,
+          temperature: 0,
+          max_tokens: maxTokens,
+        }),
+      });
+    } catch (error) {
+      if (attempt < OPENROUTER_MAX_RETRIES) {
+        const delayMs = getRetryDelayMs(attempt);
+        console.warn('[openRouterService] OpenRouter request network failure, retrying', {
+          model,
+          attempt: attempt + 1,
+          maxRetries: OPENROUTER_MAX_RETRIES,
+          delayMs,
+          reason: error instanceof Error ? error.message : String(error),
+        });
+        await sleep(delayMs);
+        continue;
+      }
 
-  if (!response.ok) {
-    const status = extractStatusCode(payload) ?? response.status;
-    const errorMessage = JSON.stringify(payload);
-    const error = new Error(errorMessage) as Error & { status?: number };
-    error.status = status;
-    throw error;
+      throw error;
+    }
+
+    const rawBody = await response.text();
+    const parsedBody = parseJsonRecord(rawBody);
+    const payload = parsedBody || { raw: rawBody };
+
+    if (!response.ok) {
+      const status = extractStatusCode(payload) ?? response.status;
+      const errorMessage = JSON.stringify(payload);
+
+      if (attempt < OPENROUTER_MAX_RETRIES && isRetriableStatus(status)) {
+        const delayMs = getRetryDelayMs(attempt, parseRetryAfterMs(response.headers.get('Retry-After')));
+        console.warn('[openRouterService] OpenRouter transient HTTP error, retrying', {
+          model,
+          status,
+          attempt: attempt + 1,
+          maxRetries: OPENROUTER_MAX_RETRIES,
+          delayMs,
+        });
+        await sleep(delayMs);
+        continue;
+      }
+
+      const error = new Error(errorMessage) as Error & { status?: number };
+      error.status = status;
+      throw error;
+    }
+
+    const choices = payload.choices as Array<{ message?: { content?: unknown } }> | undefined;
+    const content = choices?.[0]?.message?.content;
+    const text = normalizeContentToText(content).trim();
+
+    if (!text) {
+      throw new Error('EMPTY_OPENROUTER_RESPONSE');
+    }
+
+    return text;
   }
 
-  const choices = payload.choices as Array<{ message?: { content?: unknown } }> | undefined;
-  const content = choices?.[0]?.message?.content;
-  const text = normalizeContentToText(content).trim();
-
-  if (!text) {
-    throw new Error('EMPTY_OPENROUTER_RESPONSE');
-  }
-
-  return text;
+  throw new Error('OPENROUTER_RETRY_EXHAUSTED');
 };
 
 export const extractDTRFromOpenRouterVision = async (
@@ -277,9 +378,16 @@ export const extractDTRFromOpenRouterVision = async (
 };
 
 export const extractDTRFromOCRTextViaOpenRouter = async (
-  ocrText: string
+  ocrText: string,
+  ocrJson?: unknown
 ): Promise<{ record: DTRRecord; model: string; usedFallback: boolean }> => {
   let seenRateLimit = false;
+  const compactJson = ocrJson ? truncateForPrompt(JSON.stringify(ocrJson), 18000) : '';
+  const compactText = truncateForPrompt(ocrText, 12000);
+
+  const userContent = compactJson
+    ? `OCR CANONICAL JSON (preferred source):\n${compactJson}\n\nFallback OCR TEXT:\n${compactText}\n\nExtract strict DTR JSON using the required schema. Use JSON first for row alignment and confidence-aware decisions; use raw text only when needed.`
+    : `OCR TEXT INPUT:\n\n${compactText}\n\nReturn strict JSON only.`;
 
   for (let index = 0; index < OPENROUTER_REASONING_CANDIDATES.length; index += 1) {
     const model = OPENROUTER_REASONING_CANDIDATES[index];
@@ -291,7 +399,7 @@ export const extractDTRFromOCRTextViaOpenRouter = async (
           { role: 'system', content: DTR_QWEN3_PROMPT },
           {
             role: 'user',
-            content: `OCR TEXT INPUT:\n\n${ocrText}\n\nReturn strict JSON only.`,
+            content: userContent,
           },
         ],
         2500

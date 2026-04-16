@@ -332,6 +332,74 @@ input {
   gap: 12px;
 }
 
+.ocr-json-modal {
+  width: min(980px, 100%);
+  max-height: min(88vh, 900px);
+  padding: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.ocr-json-modal-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ocr-json-subtitle,
+.ocr-json-empty {
+  color: var(--text-secondary);
+}
+
+.ocr-json-loading {
+  border: 1px dashed rgba(232, 129, 58, 0.45);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(232, 129, 58, 0.08);
+}
+
+.ocr-json-list {
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.ocr-json-item {
+  border: 1px solid rgba(26, 53, 96, 0.85);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(10, 22, 40, 0.5);
+  display: grid;
+  gap: 8px;
+}
+
+.ocr-json-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ocr-json-item h4 {
+  margin: 0;
+  font-size: 0.96rem;
+}
+
+.ocr-json-item details {
+  border: 1px solid rgba(26, 53, 96, 0.75);
+  border-radius: 8px;
+  background: rgba(10, 22, 40, 0.42);
+  padding: 8px;
+}
+
+.ocr-json-item summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
 .mode-select-modal p,
 .local-ocr-modal p {
   color: var(--text-secondary);

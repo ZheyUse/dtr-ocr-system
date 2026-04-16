@@ -1,5 +1,46 @@
 const DEFAULT_LOCAL_OCR_ENDPOINT = 'http://localhost:5000/ocr';
 
+export interface LocalOCRLine {
+  text: string;
+  confidence: number;
+  bbox?: Array<[number, number]> | null;
+  rect?: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  };
+}
+
+export interface LocalOCRPage {
+  pageIndex: number;
+  lines: LocalOCRLine[];
+}
+
+export interface LocalOCRJsonPayload {
+  schemaVersion: string;
+  pages: LocalOCRPage[];
+  stats?: {
+    lineCount?: number;
+    avgConfidence?: number;
+  };
+}
+
+export interface LocalStructuredMeta {
+  parser: string;
+  entryCount: number;
+  avgMatchedLineConfidence: number;
+  confidence: number;
+  shouldUseLLM: boolean;
+}
+
+export interface LocalOCRExtractionPayload {
+  text: string;
+  ocrJson?: LocalOCRJsonPayload;
+  structuredDtr?: Record<string, unknown> | null;
+  structuredMeta?: LocalStructuredMeta;
+}
+
 const getLocalOCREndpoint = (): string => {
   return (process.env.REACT_APP_LOCAL_OCR_ENDPOINT || DEFAULT_LOCAL_OCR_ENDPOINT).trim();
 };
@@ -50,7 +91,7 @@ export const isLocalOCRServerAvailable = async (): Promise<boolean> => {
   }
 };
 
-export const extractLocalOCRText = async (file: File): Promise<string> => {
+export const extractLocalOCRPayload = async (file: File): Promise<LocalOCRExtractionPayload> => {
   const base64 = await fileToBase64(file);
   const endpoint = getLocalOCREndpoint();
 
@@ -84,6 +125,9 @@ export const extractLocalOCRText = async (file: File): Promise<string> => {
     success?: boolean;
     text?: string;
     error?: string;
+    ocr_json?: LocalOCRJsonPayload;
+    structured_dtr?: Record<string, unknown> | null;
+    structured_meta?: LocalStructuredMeta;
   };
 
   if (!payload.success) {
@@ -94,7 +138,17 @@ export const extractLocalOCRText = async (file: File): Promise<string> => {
     throw new Error(payload.error || 'LOCAL_OCR_FAILED');
   }
 
-  return (payload.text || '').trim();
+  return {
+    text: (payload.text || '').trim(),
+    ocrJson: payload.ocr_json,
+    structuredDtr: payload.structured_dtr,
+    structuredMeta: payload.structured_meta,
+  };
+};
+
+export const extractLocalOCRText = async (file: File): Promise<string> => {
+  const payload = await extractLocalOCRPayload(file);
+  return payload.text;
 };
 
 export const getLocalOCRServerHelpText = (): string => {

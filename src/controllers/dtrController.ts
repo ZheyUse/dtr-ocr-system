@@ -8,11 +8,17 @@ import {
 import {
   RATE_LIMIT_ERROR,
   extractDTRFromFile,
+  extractDTRFromOCRTextViaGemini,
   clearLastExtractionDebug,
   getLastExtractionDebug,
 } from '../services/geminiService';
 import { mergeRecords } from '../services/timeCalculator';
-import { extractLocalOCRText, isLocalOCRServerAvailable } from '../services/localOCRService';
+import { parseGeminiDTR } from '../services/dtrParser';
+import {
+  LocalOCRExtractionPayload,
+  extractLocalOCRPayload,
+  isLocalOCRServerAvailable,
+} from '../services/localOCRService';
 import {
   extractDTRFromOCRTextViaOpenRouter,
   extractDTRFromOpenRouterVision,
@@ -21,12 +27,25 @@ import {
 interface ProcessDTROptions {
   minOverlayMs?: number;
   onProgress?: (processedCount: number, totalCount: number, currentFile: File) => void;
+  onLocalOCRReady?: (currentFile: File, payload: LocalOCRExtractionPayload) => void;
 }
 
 const wait = (ms: number): Promise<void> => {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
   });
+};
+
+const tryParseDeterministicRecord = (value: unknown) => {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  try {
+    return parseGeminiDTR(JSON.stringify(value));
+  } catch {
+    return null;
+  }
 };
 
 export const processDTRFiles = async (
@@ -61,17 +80,61 @@ export const processDTRFiles = async (
       options.onProgress?.(index, files.length, file);
 
       if (mode === 'local') {
-        const ocrText = await extractLocalOCRText(file);
-        const localResult = await extractDTRFromOCRTextViaOpenRouter(ocrText);
+        const localOCR = await extractLocalOCRPayload(file);
+        options.onLocalOCRReady?.(file, localOCR);
+        const deterministicRecord = tryParseDeterministicRecord(localOCR.structuredDtr);
+        const parserMeta = localOCR.structuredMeta;
+        const parserConfidence = parserMeta?.confidence ?? 0;
+        const parserEntryCount = parserMeta?.entryCount ?? 0;
+        const parserShouldUseLLM = parserMeta?.shouldUseLLM ?? true;
+        const useDeterministic =
+          Boolean(deterministicRecord) &&
+          parserEntryCount > 0 &&
+          !parserShouldUseLLM &&
+          parserConfidence >= 0.72;
 
-        records.push(localResult.record);
-        modelsUsed.push({
-          fileName: file.name,
-          modelName: localResult.model,
-          apiVersion: 'openrouter',
-          usedFallback: localResult.usedFallback,
-          provider: 'local-ocr',
-        });
+        if (useDeterministic && deterministicRecord) {
+          records.push(deterministicRecord);
+          modelsUsed.push({
+            fileName: file.name,
+            modelName: `PaddleOCR Heuristic Parser (${parserConfidence.toFixed(2)})`,
+            apiVersion: 'local',
+            usedFallback: false,
+            provider: 'local-ocr',
+          });
+        } else {
+          try {
+            const localResult = await extractDTRFromOCRTextViaOpenRouter(localOCR.text, localOCR.ocrJson);
+
+            records.push(localResult.record);
+            modelsUsed.push({
+              fileName: file.name,
+              modelName: localResult.model,
+              apiVersion: 'openrouter',
+              usedFallback: localResult.usedFallback,
+              provider: 'local-ocr',
+            });
+          } catch (openRouterError) {
+            const geminiFallbackResult = await extractDTRFromOCRTextViaGemini(localOCR.text, localOCR.ocrJson);
+
+            records.push(geminiFallbackResult.record);
+            modelsUsed.push({
+              fileName: file.name,
+              modelName: `${geminiFallbackResult.model} (Gemini OCR-text fallback)`,
+              apiVersion: 'gemini',
+              usedFallback: true,
+              provider: 'gemini',
+            });
+
+            try {
+              console.warn('[dtrController] Local mode used Gemini fallback after OpenRouter failure', {
+                fileName: file.name,
+                openRouterError:
+                  openRouterError instanceof Error ? openRouterError.message : String(openRouterError),
+              });
+            } catch {}
+          }
+        }
       } else if (mode === 'free') {
         const freeResult = await extractDTRFromOpenRouterVision(file);
 
