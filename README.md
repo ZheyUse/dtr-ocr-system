@@ -21,6 +21,20 @@ cd dtr-ocr-system
 npm install
 ```
 
+### 2.5 One-command local setup (Windows)
+
+If you want the script to install everything for Local Mode (npm + Python venv + OCR dependencies):
+
+```powershell
+npm run setup:local
+```
+
+To setup and immediately start the Local OCR server:
+
+```powershell
+npm run setup:local:start
+```
+
 ### 3. Create .env in project root
 
 ```env
@@ -45,6 +59,12 @@ App runs at `http://localhost:3000` by default.
 ## Local OCR Setup (Optional, required for Local Mode)
 
 Run these commands in `dtr-ocr-system`:
+
+Prefer script-first setup on Windows:
+
+```powershell
+npm run setup:local
+```
 
 ### Windows PowerShell (recommended)
 
