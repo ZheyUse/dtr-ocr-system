@@ -16,7 +16,7 @@ A React + TypeScript web app for extracting Daily Time Record data from uploaded
 ### 2. Clone and install Node dependencies
 
 ```bash
-git clone <your-fork-or-repo-url>
+git clone ZheyUse/dtr-ocr-system>
 cd dtr-ocr-system
 npm install
 ```
