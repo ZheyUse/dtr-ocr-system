@@ -15,6 +15,7 @@ import { LocalOCRUnavailableModal } from '../components/LocalOCRUnavailableModal
 import {
   ALL_MODELS_FAILED_ERROR,
   LOCAL_OCR_NOT_AVAILABLE_ERROR,
+  OPENROUTER_CONNECTIVITY_ERROR,
   ProcessingMode,
 } from '../types/dtr.types';
 
@@ -113,6 +114,21 @@ export const UploadPage: React.FC = () => {
         } catch {}
         setShowRateLimitModal(true);
         return;
+      }
+
+      if (
+        processError instanceof Error &&
+        processError.message.startsWith(OPENROUTER_CONNECTIVITY_ERROR)
+      ) {
+        if (processingMode === 'local') {
+          setError('Local OCR is ready, but OpenRouter is unreachable. Check internet, API key, and OpenRouter endpoint settings.');
+          return;
+        }
+
+        if (processingMode === 'free') {
+          setError('Free Mode cannot reach OpenRouter right now. Check internet, API key, and OpenRouter endpoint settings.');
+          return;
+        }
       }
 
       if (processError instanceof Error && processError.message === ALL_MODELS_FAILED_ERROR) {

@@ -164,9 +164,17 @@ const run = async () => {
   }
 
   console.log(`[connectivity] HTTP ${connectivity.status} ${connectivity.statusText} - ${connectivity.elapsedMs}ms`);
-  if (connectivity.parsed.ok && Array.isArray(connectivity.parsed.value?.models)) {
-    console.log(`[connectivity] OpenRouter reachable — models count: ${connectivity.parsed.value.models.length}`);
-    const sample = connectivity.parsed.value.models.slice(0, 6).map((m) => m.id || m.model || m.name).filter(Boolean);
+  const modelsList = connectivity.parsed.ok
+    ? (Array.isArray(connectivity.parsed.value?.models)
+        ? connectivity.parsed.value.models
+        : Array.isArray(connectivity.parsed.value?.data)
+        ? connectivity.parsed.value.data
+        : null)
+    : null;
+
+  if (Array.isArray(modelsList)) {
+    console.log(`[connectivity] OpenRouter reachable — models count: ${modelsList.length}`);
+    const sample = modelsList.slice(0, 6).map((m) => m.id || m.model || m.name).filter(Boolean);
     if (sample.length) console.log('[connectivity] Sample models:', sample.join(', '));
   } else if (connectivity.status === 401) {
     console.log('[connectivity] Host reachable but authentication failed (401). Your key may be missing or invalid.');

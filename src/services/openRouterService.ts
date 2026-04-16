@@ -1,4 +1,4 @@
-import { DTRRecord, ALL_MODELS_FAILED_ERROR } from '../types/dtr.types';
+import { DTRRecord, ALL_MODELS_FAILED_ERROR, OPENROUTER_CONNECTIVITY_ERROR } from '../types/dtr.types';
 import {
   OPENROUTER_BASE_URL,
   OPENROUTER_REASONING_CANDIDATES,
@@ -13,6 +13,33 @@ type OpenRouterMessage = {
   content: string | Array<{ type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } }>;
 };
 
+const normalizeOpenRouterChatUrl = (url: string): string => {
+  const cleaned = url.trim().replace(/\/+$/, '');
+
+  if (cleaned.endsWith('/chat/completions')) {
+    return cleaned;
+  }
+
+  if (cleaned.endsWith('/api/v1')) {
+    return `${cleaned}/chat/completions`;
+  }
+
+  if (cleaned.endsWith('/api')) {
+    return `${cleaned}/v1/chat/completions`;
+  }
+
+  return `${cleaned}/api/v1/chat/completions`;
+};
+
+const OPENROUTER_CHAT_URL = normalizeOpenRouterChatUrl(
+  process.env.REACT_APP_OPENROUTER_CHAT_URL ||
+    process.env.REACT_APP_OPENROUTER_BASE_URL ||
+    OPENROUTER_BASE_URL
+);
+const OPENROUTER_MODELS_URL = OPENROUTER_CHAT_URL.replace(/\/chat\/completions$/, '/models');
+
+let connectivityPromise: Promise<void> | null = null;
+
 const getApiKey = (): string => {
   const key = process.env.REACT_APP_OPENROUTER_API_KEY;
   if (!key) {
@@ -20,6 +47,58 @@ const getApiKey = (): string => {
   }
 
   return key;
+};
+
+const parseJsonRecord = (text: string): Record<string, unknown> | null => {
+  try {
+    const value = JSON.parse(text);
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+};
+
+const ensureOpenRouterConnectivity = async (): Promise<void> => {
+  if (connectivityPromise) {
+    return connectivityPromise;
+  }
+
+  connectivityPromise = (async () => {
+    const apiKey = getApiKey();
+
+    let response: Response;
+    try {
+      response = await fetch(OPENROUTER_MODELS_URL, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          Accept: 'application/json',
+        },
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`${OPENROUTER_CONNECTIVITY_ERROR}: ${reason}`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`${OPENROUTER_CONNECTIVITY_ERROR}: HTTP_${response.status}`);
+    }
+
+    const body = await response.text();
+    const payload = parseJsonRecord(body);
+    const hasModelList = Array.isArray(payload?.data) || Array.isArray(payload?.models);
+
+    if (!hasModelList) {
+      console.warn('[openRouterService] OpenRouter /models is reachable but returned unexpected payload shape.');
+    }
+  })();
+
+  try {
+    await connectivityPromise;
+  } catch (error) {
+    connectivityPromise = null;
+    throw error;
+  }
 };
 
 const fileToDataUrl = (file: File): Promise<string> => {
@@ -99,9 +178,10 @@ const callOpenRouter = async (
   messages: OpenRouterMessage[],
   maxTokens: number
 ): Promise<string> => {
+  await ensureOpenRouterConnectivity();
   const apiKey = getApiKey();
 
-  const response = await fetch(OPENROUTER_BASE_URL, {
+  const response = await fetch(OPENROUTER_CHAT_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -115,7 +195,9 @@ const callOpenRouter = async (
     }),
   });
 
-  const payload = (await response.json()) as Record<string, unknown>;
+  const rawBody = await response.text();
+  const parsedBody = parseJsonRecord(rawBody);
+  const payload = parsedBody || { raw: rawBody };
 
   if (!response.ok) {
     const status = extractStatusCode(payload) ?? response.status;

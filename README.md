@@ -48,6 +48,47 @@ Notes:
 - Free Mode uses OpenRouter key.
 - Legacy Mode uses Gemini key.
 
+### Run Locally (Development)
+
+To run the app and the optional local OCR server on your machine you typically need two terminals: one for the PaddleOCR local server (Local Mode) and one for the React frontend.
+
+Windows (PowerShell) — start OCR server then frontend:
+
+```powershell
+# 1) create virtualenv (only once)
+py -3.12 -m venv .venv-local
+.\.venv-local\Scripts\python.exe -m pip install --upgrade pip
+.\.venv-local\Scripts\python.exe -m pip install -r requirements-local-ocr.txt
+
+# 2) start the OCR server (keep this terminal open while using Local Mode)
+$env:PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK='True'
+.\.venv-local\Scripts\python.exe .\ocr_server.py
+
+# In a second terminal: start the frontend
+npm start
+```
+
+macOS / Linux — start OCR server then frontend:
+
+```bash
+# 1) create virtualenv (only once)
+python3.12 -m venv .venv-local
+./.venv-local/bin/python -m pip install --upgrade pip
+./.venv-local/bin/python -m pip install -r requirements-local-ocr.txt
+
+# 2) start the OCR server (keep this terminal open while using Local Mode)
+PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True ./.venv-local/bin/python ./ocr_server.py
+
+# In a second terminal: start the frontend
+npm start
+```
+
+Notes and tips:
+- Make sure your `.env` contains `REACT_APP_LOCAL_OCR_ENDPOINT=http://localhost:5000/ocr` (or the URL you set) so the frontend knows where to POST images for OCR.
+- If you used `npm run setup:local` the script creates the `.venv-local` and installs OCR deps for you; `npm run setup:local:start` will also start the server on Windows.
+- The first OCR server startup can take several minutes as Paddle downloads models — keep that terminal open while testing Local Mode.
+- Use `Free Mode` from the app if you prefer not to run the local OCR server; that mode uses OpenRouter (requires `REACT_APP_OPENROUTER_API_KEY`).
+
 ### 4. Start frontend
 
 ```bash
