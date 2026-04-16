@@ -28,7 +28,8 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "setup:local": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-local.ps1",
-    "setup:local:start": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-local.ps1 -StartServer"
+    "setup:local:start": "powershell -ExecutionPolicy Bypass -File ./scripts/setup-local.ps1 -StartServer",
+    "probe:openrouter:vision": "node ./tools/probeOpenRouterVision.mjs"
   },
   "eslintConfig": {
     "extends": [
